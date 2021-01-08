@@ -1,0 +1,15 @@
+version: "3.7"
+
+services:
+  # [START db_services]
+  postgres:
+    container_name: postgres_bitcoin
+    image: debezium/postgres:11-alpine
+    command: ["postgres", "-c", "log_statement=all"]
+    ports:
+      - 5432:5432
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_PASSWORD: qwerty
+  # [END db_services]
