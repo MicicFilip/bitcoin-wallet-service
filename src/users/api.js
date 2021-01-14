@@ -63,7 +63,7 @@ router.get('/me', async (request, reply) => {
   // Verify integrity of JWT Token and authorized user.
   let tokenPayload;
   try {
-    tokenPayload = await jwt.verify(request.headers['authorization']);
+    tokenPayload = await jwt.authorize(request.headers['authorization']);
   } catch (err) {
     return reply.status(err.statusCode).send({ message: err.message });
   }
@@ -130,7 +130,9 @@ router.get('/:id', async (request, reply) => {
   // Retrieve user from the database by id.
   const user = await pg.getUserById(request.params.id);
   // Remove password from user object, because security.
-  delete user.password;
+  if (user) {
+    delete user.password;
+  }
 
   return reply.status(status.OK).send(user);
 });
@@ -152,9 +154,14 @@ router.put('/:id', async (request, reply) => {
     return reply.status(status.BAD_REQUEST).send({ message: err.message });
   }
 
-  // Update existing user in the system
+  // Update existing user in the system.
   try {
-    const updatedUser = pg.updateUser(request.params.id, requestData);
+    const updatedUser = await pg.updateUser(request.params.id, requestData);
+    // If we recieve an empty response, user was not found and updated.
+    if (!updatedUser) {
+      return reply.status(status.NOT_FOUND).send({ message: 'User not found' });
+    }
+
     return reply.status(status.OK).send(updatedUser);
   } catch (err) {
     return reply.status(err.statusCode).send({ message: err.message });

@@ -86,9 +86,10 @@ async function updateUser(userId, payload) {
     payload.password = await bcrypt.hash(payload.password, Number(process.env.PASSWORD_SALT));
   }
 
-  // Update user with new data.
+  // Update specific user with new data.
   try {
     const updatedUser = await knex(USER_TABLE_NAME)
+      .where({ id: userId })
       .update(payload, ['id', 'first_name', 'last_name', 'email', 'role']);
 
     return updatedUser[0];
