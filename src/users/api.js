@@ -1,34 +1,35 @@
 const express = require('express');
 const status = require('http-status');
 const pg = require('./db');
+const jwt = require('../authorization');
+const { ADMIN_USER_ROLE } = require('./consts');
 const {
   userRegisterSchema,
-  userLoginSchema
+  userLoginSchema,
+  userCreateSchema
 } = require('./schemas');
-const { ADMIN_USER_ROLE } = require('./consts');
-const jwt = require('../authorization');
 
 const router = express.Router();
 
 /* POST user registration */
 router.post('/register', async (request, reply) => {
-    // Validate incoming payload for user registration.
-    let requestData;
-    try {
-      requestData = await userRegisterSchema.validateAsync(request.body)
-    } catch (err) {
-      return reply.status(status.BAD_REQUEST).send({ message: err.message });
-    }
+  // Validate incoming payload for user registration.
+  let requestData;
+  try {
+    requestData = await userRegisterSchema.validateAsync(request.body)
+  } catch (err) {
+    return reply.status(status.BAD_REQUEST).send({ message: err.message });
+  }
 
-    // Register user in the system.
-    let createdUser;
-    try {
-      createdUser = await pg.registerUser(requestData);
-    } catch (err) {
-      return reply.status(err.statusCode).send({ message: err.message });
-    }
+  // Register user in the system.
+  let createdUser;
+  try {
+    createdUser = await pg.registerUser(requestData);
+  } catch (err) {
+    return reply.status(err.statusCode).send({ message: err.message });
+  }
 
-    return reply.status(status.OK).send(createdUser);
+  return reply.status(status.OK).send(createdUser);
 });
 
 /* POST user login */
@@ -47,7 +48,7 @@ router.post('/login', async (request, reply) => {
   let jwtToken;
   try {
     const user = await pg.verifyUserCredentials(requestData);
-    jwtToken = await jwt.authorize(user);
+    jwtToken = await jwt.sign(user);
   } catch (err) {
     return reply.status(err.statusCode).send({ message: err.message });
   }
@@ -55,9 +56,9 @@ router.post('/login', async (request, reply) => {
   return reply.status(status.OK).send({ token: jwtToken });
 });
 
-/* POST logged in user details. */
+/* GET logged in user details. */
 router.get('/me', async (request, reply) => {
-  // Verify integrity of JWT Token.
+  // Verify integrity of JWT Token and authorized user.
   let tokenPayload;
   try {
     tokenPayload = await jwt.verify(request.headers['authorization']);
@@ -65,7 +66,7 @@ router.get('/me', async (request, reply) => {
     return reply.status(err.statusCode).send({ message: err.message });
   }
 
-  // Retrieve user from the database
+  // Retrieve user from the database.
   const user = await pg.getUserById(tokenPayload.data.id);
   // Remove password from user object, because security.
   delete user.password;
@@ -73,11 +74,11 @@ router.get('/me', async (request, reply) => {
   return reply.status(status.OK).send(user);
 });
 
-/* GET users list route. */
+/* GET users list route available for administrator users. */
 router.get('/', async (request, reply) => {
-  // Verify integrity of JWT token.
+  // Authorize user using JWT token, and check if that user has `admin` role.
   try {
-    await jwt.verify(request.headers['authorization'], ADMIN_USER_ROLE);
+    await jwt.authorize(request.headers['authorization'], ADMIN_USER_ROLE);
   } catch (err) {
     return reply.status(err.statusCode).send({ message: err.message });
   }
@@ -89,5 +90,53 @@ router.get('/', async (request, reply) => {
   return reply.status(status.OK).send(results);
 });
 
+/* POST add new user route, available for administrator users. */
+router.post('/', async (request, reply) => {
+  // Authorize user using JWT token, and check if that user has `admin` role.
+  try {
+    await jwt.authorize(request.headers['authorization'], ADMIN_USER_ROLE);
+  } catch (err) {
+    return reply.status(err.statusCode).send({ message: err.message });
+  }
+
+  // Validate incoming payload for user creation.
+  let requestData;
+  try {
+    requestData = await userCreateSchema.validateAsync(request.body);
+  } catch (err) {
+    return reply.status(status.BAD_REQUEST).send({ message: err.message });
+  }
+
+  // Create new user in the system.
+  let createdUser;
+  try {
+    createdUser = await pg.registerUser(requestData, requestData.role);
+  } catch (err) {
+    return reply.status(err.statusCode).send({ message: err.message });
+  }
+
+  return reply.status(status.OK).send(createdUser);
+});
+
+/* GET specific user by id route available for administrator users. */
+router.get('/:id', async (request, reply) => {
+  // Authorize user using JWT token, and check if that user has `admin` role.
+  try {
+    await jwt.authorize(request.headers['authorization'], ADMIN_USER_ROLE);
+  } catch (err) {
+    return reply.status(err.statusCode).send({ message: err.message });
+  }
+
+  // Retrieve user from the database by id.
+  const user = await pg.getUserById(request.params.id);
+  // Remove password from user object, because security.
+  delete user.password;
+
+  return reply.status(status.OK).send(user);
+});
+
+
+
+// TODO: Add route for updating users.
 
 module.exports = router;

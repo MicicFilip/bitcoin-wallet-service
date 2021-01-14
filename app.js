@@ -20,8 +20,8 @@ app.use(helmet());
 app.use('/api/users', usersApi);
 
 // Set application port and listen for incoming requests.
-const PORT = process.env.PORT || 3000;
+const API_PORT = process.env.API_PORT || 3000;
 // Spin up the application.
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}.`);
+app.listen(API_PORT, () => {
+    console.log(`Server is running on port ${API_PORT}.`);
 });

@@ -38,6 +38,7 @@ async function getUserById(id) {
 
 /**
  * As the name suggest - user registration
+ * @name registerUser
  * @param {object} payload - User registration data.
  * @return {object} 'id', 'first_name', 'last_name', 'email'.
  * @err {object} HttpError
@@ -59,7 +60,7 @@ async function registerUser(payload) {
         last_name: payload.last_name,
         email: payload.email,
         password: hashedPassword,
-        role: DEFAULT_USER_ROLE
+        role: payload.role || DEFAULT_USER_ROLE
       })
       .returning(['id', 'first_name', 'last_name', 'email', 'role']);
 
@@ -73,6 +74,7 @@ async function registerUser(payload) {
 
 /**
  * Verifies if the user exists and if the provided passwords match.
+ * @name verifyUserCredentials
  * @param {object} payload - User login data.
  * @return {object} 'id', 'first_name', 'last_name', 'email'.
  * @err {object} HttpError
@@ -94,6 +96,7 @@ async function verifyUserCredentials(payload) {
 
 /**
  * Paginates user table.
+ * @name paginateUsers
  * @param {object} currentPage - Current page set for pagination.
  * @return {object} Database entries count and User objects.
  * @err {object} HttpError

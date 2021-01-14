@@ -5,11 +5,11 @@ const { DEFAULT_USER_ROLE, ADMIN_USER_ROLE } = require('./users/consts');
 
 /**
  * Abstraction over JWT signing.
- * @name authorization
+ * @name sign
  * @param {Object} payload - Data of the user.
  * @return {string} Signed JWT.
  */
-async function authorize(payload) {
+async function sign(payload) {
   try {
     return await jwt.sign({
       exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24),  // Token valid for one day.
@@ -26,10 +26,12 @@ async function authorize(payload) {
 
 /**
  * Abstraction over JWT verification.
- * @param {string} token JWT string.
+ * @name authorize
+ * @param {string} authorizationHeader Authorization header string.
+ * @param {string} neededUserRole needed user role for requested resorce.
  * @return {object} Verified JWT data.
  */
-async function verify(authorizationHeader, neededUserRole = DEFAULT_USER_ROLE) {
+async function authorize(authorizationHeader, neededUserRole = DEFAULT_USER_ROLE) {
   // Check if `Authorization` header has been provided in the request.
   if (!authorizationHeader) {
     throw new HttpError(
@@ -55,15 +57,15 @@ async function verify(authorizationHeader, neededUserRole = DEFAULT_USER_ROLE) {
   // to be an `admin` user.
   const tokenUserRole = tokenPayload.data.role;
   if (tokenUserRole === neededUserRole
-     || tokenUserRole === ADMIN_USER_ROLE) {
-       return tokenPayload;
-    }
+    || tokenUserRole === ADMIN_USER_ROLE) {
+    return tokenPayload;
+  }
 
   throw new HttpError(status.FORBIDDEN, 'You do not have access to this resource.');
 }
 
 
 module.exports = {
-  authorize: authorize,
-  verify: verify
+  sign: sign,
+  authorize: authorize
 };
