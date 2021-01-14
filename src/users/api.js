@@ -6,12 +6,14 @@ const { ADMIN_USER_ROLE } = require('./consts');
 const {
   userRegisterSchema,
   userLoginSchema,
-  userCreateSchema
+  userCreateSchema,
+  userUpdateSchema
 } = require('./schemas');
 
 const router = express.Router();
 
-/* POST user registration */
+
+/* POST route for user registration */
 router.post('/register', async (request, reply) => {
   // Validate incoming payload for user registration.
   let requestData;
@@ -24,7 +26,7 @@ router.post('/register', async (request, reply) => {
   // Register user in the system.
   let createdUser;
   try {
-    createdUser = await pg.registerUser(requestData);
+    createdUser = await pg.createUser(requestData);
   } catch (err) {
     return reply.status(err.statusCode).send({ message: err.message });
   }
@@ -32,7 +34,7 @@ router.post('/register', async (request, reply) => {
   return reply.status(status.OK).send(createdUser);
 });
 
-/* POST user login */
+/* POST route for user login. */
 router.post('/login', async (request, reply) => {
   // Validate incoming payload for user login.
   let requestData;
@@ -74,7 +76,7 @@ router.get('/me', async (request, reply) => {
   return reply.status(status.OK).send(user);
 });
 
-/* GET users list route available for administrator users. */
+/* GET route for listing all users, available for administrator users. */
 router.get('/', async (request, reply) => {
   // Authorize user using JWT token, and check if that user has `admin` role.
   try {
@@ -90,7 +92,7 @@ router.get('/', async (request, reply) => {
   return reply.status(status.OK).send(results);
 });
 
-/* POST add new user route, available for administrator users. */
+/* POST route for adding new users, available for administrator users. */
 router.post('/', async (request, reply) => {
   // Authorize user using JWT token, and check if that user has `admin` role.
   try {
@@ -108,17 +110,15 @@ router.post('/', async (request, reply) => {
   }
 
   // Create new user in the system.
-  let createdUser;
   try {
-    createdUser = await pg.registerUser(requestData, requestData.role);
+    const createdUser = await pg.createUser(requestData, requestData.role);
+    return reply.status(status.OK).send(createdUser);
   } catch (err) {
     return reply.status(err.statusCode).send({ message: err.message });
   }
-
-  return reply.status(status.OK).send(createdUser);
 });
 
-/* GET specific user by id route available for administrator users. */
+/* GET route for getting specific user by id, available for administrator users. */
 router.get('/:id', async (request, reply) => {
   // Authorize user using JWT token, and check if that user has `admin` role.
   try {
@@ -135,8 +135,31 @@ router.get('/:id', async (request, reply) => {
   return reply.status(status.OK).send(user);
 });
 
+/* PUT route for updating users, available for administrator users. */
+router.put('/:id', async (request, reply) => {
+  // Authorize user using JWT token, and check if that user has `admin` role.
+  try {
+    await jwt.authorize(request.headers['authorization'], ADMIN_USER_ROLE);
+  } catch (err) {
+    return reply.status(err.statusCode).send({ message: err.message });
+  }
 
+  // Validate incoming payload for user update.
+  let requestData;
+  try {
+    requestData = await userUpdateSchema.validateAsync(request.body);
+  } catch (err) {
+    return reply.status(status.BAD_REQUEST).send({ message: err.message });
+  }
 
-// TODO: Add route for updating users.
+  // Update existing user in the system
+  try {
+    const updatedUser = pg.updateUser(request.params.id, requestData);
+    return reply.status(status.OK).send(updatedUser);
+  } catch (err) {
+    return reply.status(err.statusCode).send({ message: err.message });
+  }
+});
+
 
 module.exports = router;

@@ -37,13 +37,13 @@ async function getUserById(id) {
 }
 
 /**
- * As the name suggest - user registration
- * @name registerUser
+ * As the name suggest - user creation.
+ * @name createUser
  * @param {object} payload - User registration data.
- * @return {object} 'id', 'first_name', 'last_name', 'email'.
+ * @return {object} 'id', 'first_name', 'last_name', 'email', 'role'.
  * @err {object} HttpError
  */
-async function registerUser(payload) {
+async function createUser(payload) {
   // Check if user exists in the system.
   const user = await getUserByEmail(payload.email);
   if (user) {
@@ -68,6 +68,33 @@ async function registerUser(payload) {
   } catch (err) {
     throw new HttpError(
       status.INTERNAL_SERVER_ERROR, 'Something went wrong with registering user.'
+    );
+  }
+}
+
+/**
+ * Updates existing users in the system.
+ * @name updateUser
+ * @param {number} userId - id of the user
+ * @param {object} payload - user update data.
+ * @return {object} 'id', 'first_name', 'last_name', 'email', 'role'.
+ * @err {object} HttpError
+ */
+async function updateUser(userId, payload) {
+  // If password is being updated, we need to hash it in order to save it.
+  if (payload.password) {
+    payload.password = await bcrypt.hash(payload.password, Number(process.env.PASSWORD_SALT));
+  }
+
+  // Update user with new data.
+  try {
+    const updatedUser = await knex(USER_TABLE_NAME)
+      .update(payload, ['id', 'first_name', 'last_name', 'email', 'role']);
+
+    return updatedUser[0];
+  } catch (err) {
+    throw new HttpError(
+      status.INTERNAL_SERVER_ERROR, 'Something went wrong with updating user.'
     );
   }
 }
@@ -123,7 +150,8 @@ async function paginateUsers(currentPage) {
 }
 
 module.exports = {
-  registerUser: registerUser,
+  createUser: createUser,
+  updateUser: updateUser,
   verifyUserCredentials: verifyUserCredentials,
   getUserById: getUserById,
   paginateUsers: paginateUsers

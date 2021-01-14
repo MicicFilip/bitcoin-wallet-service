@@ -24,8 +24,17 @@ const userCreateSchema = Joi.object().keys({
   role: Joi.string().valid(DEFAULT_USER_ROLE, ADMIN_USER_ROLE).required()
 });
 
+const userUpdateSchema = Joi.object().keys({
+  first_name: Joi.string().max(35),
+  last_name: Joi.string().max(35),
+  email: Joi.string().email().max(100),
+  password: Joi.string().regex(passwordRegex),
+  role: Joi.string().valid(DEFAULT_USER_ROLE, ADMIN_USER_ROLE)
+});
+
 module.exports = {
   userRegisterSchema: userRegisterSchema,
   userLoginSchema: userLoginSchema,
-  userCreateSchema: userCreateSchema
+  userCreateSchema: userCreateSchema,
+  userUpdateSchema: userUpdateSchema
 }
