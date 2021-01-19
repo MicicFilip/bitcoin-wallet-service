@@ -7,32 +7,34 @@ const { DEFAULT_USER_ROLE } = require('./consts');
 
 
 /**
- * Checks if user exists in the system.
+ * Retrieves user by email address.
  * @param {string} email User email which we check in database.
  * @return {object} User object with properties: .
  */
 async function getUserByEmail(email) {
-    const user =  await knex.select(
-        'id', 'first_name', 'last_name',
-        'email', 'password', 'role'
-      )
-      .from(USER_TABLE_NAME)
-      .where('email', email);
-    return user[0];
+  const user = await knex.select(
+    'id', 'first_name', 'last_name',
+    'email', 'password', 'role'
+  )
+  .from(USER_TABLE_NAME)
+  .where('email', email);
+
+  return user[0];
 }
 
 /**
- * Checks if user exists in the system.
+ * Retrieves user by id.
  * @param {string} id User id which we check in database.
  * @return {object} User object with properties.
  */
 async function getUserById(id) {
-  const user =  await knex.select(
-      'id', 'first_name', 'last_name', 'email', 'password',
-      'role', 'last_login_ip', 'created_at', 'updated_at'
-    )
-    .from(USER_TABLE_NAME)
-    .where('id', id);
+  const user = await knex.select(
+    'id', 'first_name', 'last_name', 'email', 'password',
+    'role', 'last_login_ip', 'created_at', 'updated_at'
+  )
+  .from(USER_TABLE_NAME)
+  .where('id', id);
+
   return user[0];
 }
 
@@ -131,7 +133,7 @@ async function verifyUserCredentials(payload) {
  */
 async function paginateUsers(currentPage) {
   // Paginate over users table.
-  const usersResult =  await knex
+  const usersResult = await knex
     .select(
       'id', 'first_name', 'last_name', 'email', 'role',
       'last_login_ip', 'created_at', 'updated_at'

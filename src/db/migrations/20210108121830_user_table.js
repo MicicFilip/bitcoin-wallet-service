@@ -1,4 +1,4 @@
-const {userTable} = require('../../users/tables');
+const { userTable, USER_TABLE_NAME } = require('../../users/tables');
 
 // Migrate UP user tables.
 exports.up = async function(knex) {
@@ -14,7 +14,7 @@ exports.up = async function(knex) {
 // Migrate DOWN user tables.
 exports.down = async function(knex) {
   try {
-    await knex.schema.dropTable('user');
+    await knex.schema.dropTable(USER_TABLE_NAME);
 
     return true;
   } catch (err) {
