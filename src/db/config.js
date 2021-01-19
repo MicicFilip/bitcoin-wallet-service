@@ -1,4 +1,3 @@
-
 // Initialize connection to PostgreSQL using knexjs.
 const knex = require('knex')({
   client: 'pg',
@@ -10,8 +9,9 @@ const knex = require('knex')({
     password: process.env.DB_PASSWORD || 'qwerty'
   }
 });
-const { attachPaginate } = require('knex-paginate');
-attachPaginate();
+
+// Initialize knex pagination.
+require('knex-paginate').attachPaginate();
 
 module.exports = {
   knex: knex
