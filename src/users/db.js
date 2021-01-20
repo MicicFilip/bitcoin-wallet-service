@@ -8,8 +8,9 @@ const { DEFAULT_USER_ROLE } = require('./consts');
 
 /**
  * Retrieves user by email address.
+ * @name getUserByEmail
  * @param {string} email User email which we check in database.
- * @return {object} User object with properties: .
+ * @return {object} User object with properties.
  */
 async function getUserByEmail(email) {
   const user = await knex.select(
@@ -24,6 +25,7 @@ async function getUserByEmail(email) {
 
 /**
  * Retrieves user by id.
+ * @name getUserById
  * @param {string} id User id which we check in database.
  * @return {object} User object with properties.
  */

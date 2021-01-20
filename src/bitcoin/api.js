@@ -10,7 +10,7 @@ router.post('/blocknotify', async (request, reply) => {
   const requestHost = request.headers.host.split(":")[0];
 
   if (requestHost !== '127.0.0.1' && requestHost !== 'localhost') {
-    return reply.status(403).send({ message: "Access denied" });
+    return reply.status(status.FORBIDDEN).send({ message: "Access denied" });
   }
 
   // Validate bitcoin block hash hex format.
