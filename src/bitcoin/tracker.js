@@ -2,6 +2,12 @@ const { HttpError } = require('../errors');
 const status = require('http-status');
 const pg = require('./db');
 const rpc = require('./rpc');
+const { logger } = require('../utils');
+const {
+  TRANSACTION_TYPE,
+  TRANSACTION_STATUS,
+  NUMBER_OF_CONFIRMATIONS
+} = require('./consts');
 
 /**
  * Tracks provided block hash in the database, if it doesn't exist
@@ -10,7 +16,7 @@ const rpc = require('./rpc');
  * @return {object} null
  * @err {object} HttpError
  */
-async function trackBlocks(blockHash)  {
+async function trackBlocks(blockHash) {
   const block = await pg.getBlockByHash(blockHash);
   // If block already exists in the system we will skip tracking blocks,
   // since we are on top of the chain.
@@ -27,9 +33,15 @@ async function trackBlocks(blockHash)  {
     const blockHash = blockStack.pop();
     // Retrieve block height from the network.
     const blockHeight = await rpc.getBlockHeightByBlockHash(blockHash);
-    // TODO: Process inbound transactions if there are any.
+    // Process inbound transactions if there are any.
     await _processInboundTransactions(blockHash);
+    // Add newly processed block to the block history.
     await pg.createBlockHistory(blockHash, blockHeight);
+
+    logger.log({
+      level: 'info',
+      message: `${blockHeight} block processed!`
+    });
   }
 }
 
@@ -91,8 +103,10 @@ async function _processInboundTransactions(blockHash) {
         // addresses in a single output we detected a transaction with multiple receviers.
         if (transactionOutputAddresses) {
           if (transactionOutputAddresses.length > 1) {
-            // TODO: log multiple addresses as a reciever of same funds which is invalid.
-            console.log('ou shit');
+            logger.log({
+              level: 'warn',
+              message: `Transaction ${transactionId} with multiple outputs for single address detected!`
+            });
           } else {
             // Retrieve receving bitcoin address from transaction output.
             const bitcoinAddress = transactionOutputAddresses[0];
@@ -101,12 +115,15 @@ async function _processInboundTransactions(blockHash) {
             if (userAddress) {
               const amountReceived = vectorOutput.value;
               const transactionTimestamp = rawTransaction.time;
-              // TODO: Test this with actual coins.
               // If user address is found system will create an inbound unconfirmed
               // transaction and increase the unconfirmed balance of the address.
               await pg.createUnconfirmedInboundTransaction(
-                transactionId, amountReceived, transactionTimestamp, userAddress
+                transactionId, blockHash, amountReceived, transactionTimestamp, userAddress
               );
+              logger.log({
+                level: 'info',
+                message: `${userAddress.user_id} received ${amountReceived} amount via ${transactionId} transaction.`
+              });
             }
           }
         }
@@ -120,6 +137,51 @@ async function _processInboundTransactions(blockHash) {
   }
 }
 
+/**
+ * Tracks inbound transaction confirmations.
+ * @err {object} HttpError
+ */
+async function trackTransactionConfirmations() {
+  // Retrieve all `Unconfirmed` and `Accepted` transactions.
+  const transactionsStack = await pg.getUnconfirmedAndAcceptedTransactions();
+  if (transactionsStack.length === 0) {
+    logger.log({
+      level: 'info',
+      message: 'No `Unconfirmed` or `Accepted` transactions to be tracked.'
+    });
+    return null;
+  }
+
+  for (const transaction of transactionsStack) {
+    const transactionId = transaction.transaction_id;
+    const blockHash = transaction.block_id;
+    // Retrieve raw transacation data from the network.
+    const rawTransaction = rpc.getRawTransaction(transactionId, blockHash);
+
+    if (rawTransaction.confirmations >= NUMBER_OF_CONFIRMATIONS) {
+      // If transacation that system detected is `Inbound` we need to update transaction status and
+      // increase confirmed balance of that address.
+      if (transaction.type === TRANSACTION_TYPE.INBOUND) {
+        await pg.updateBalancesAndTransactionStatusToConfirmed(
+          transactionId, transaction.public_key
+        );
+      // If transaction that system detected is `Outbound` we just need to update transaction status
+      // to `Confirmed`.
+      } else if (transaction.type === TRANSACTION_TYPE.OUTBOUND) {
+        await pg.updateTransactionStatus(
+          transactionId, transaction.public_key, TRANSACTION_STATUS.CONFIRMED
+        );
+      }
+
+      logger.log({
+        level: 'info',
+        message: `${transaction.type} ${transactionId} transaction has been confirmed!`
+      });
+    }
+  }
+}
+
 module.exports = {
-  trackBlocks: trackBlocks
+  trackBlocks: trackBlocks,
+  trackTransactionConfirmations: trackTransactionConfirmations
 };

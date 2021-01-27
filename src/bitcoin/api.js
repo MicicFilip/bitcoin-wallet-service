@@ -1,7 +1,11 @@
 const express = require('express');
 const status = require('http-status');
 const {blocknotifySchema} = require('./schemas');
-const { trackBlocks } = require('./service');
+const {
+  trackBlocks,
+  trackTransactionConfirmations
+} = require('./tracker');
+const { logger } = require('../utils');
 
 const router = express.Router();
 
@@ -20,12 +24,26 @@ router.post('/blocknotify', async (request, reply) => {
     return reply.status(status.BAD_REQUEST).send({ message: 'Block hash not in valid format.' });
   }
 
-  // TODO: track block
-  await trackBlocks(request.body.block_hash);
-  // TODO: handle inbound transaction confirmations
-  // TODO: handle outbound transaction confirmations
+  // Synchronize bitcoin blocks on the network with ones kept in the system.
+  // After catching up to the bitcoin network, we need to track transaction confirmations
+  // of both Inbound and Outbound transactions.
+  try {
+    await trackBlocks(request.body.block_hash);
+    await trackTransactionConfirmations();
+  } catch (err) {
+    logger.log({
+      level: 'critical',
+      message: `Error occurred while tracking blocks: ${err.message}`
+    });
+
+    return reply.status(status.INTERNAL_SERVER_ERROR)
+      .send({ message: err.message });
+  }
+
   return reply.status(200).send({ message: "Block recieved." });
 });
 
+
+// TODO: Continue writing financial routes.
 
 module.exports = router;

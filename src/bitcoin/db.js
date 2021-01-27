@@ -1,12 +1,12 @@
 const { knex } = require('../db/config');
 const { HttpError } = require('../errors');
 const status = require('http-status');
+const { USER_TABLE_NAME } = require('../users/tables');
 const {
   BLOCK_HISTORY_TABLE_NAME,
   ADDRESS_TABLE_NAME,
   TRANSACTION_TABLE_NAME
 } = require('./tables');
-const { USER_TABLE_NAME } = require('../users/tables');
 const {
   TRANSACTION_TYPE,
   TRANSACTION_STATUS
@@ -22,9 +22,9 @@ const {
 async function getBlockByHash(blockHash) {
   const block = await knex.select(
     'id', 'block_hash', 'block_height', 'created_at'
-  )
-  .from(BLOCK_HISTORY_TABLE_NAME)
-  .where('block_hash', blockHash);
+    )
+    .from(BLOCK_HISTORY_TABLE_NAME)
+    .where('block_hash', blockHash);
 
   return block[0];
 }
@@ -45,7 +45,7 @@ async function createBlockHistory(blockHash, blockHeight) {
       })
       .returning(['id', 'block_hash', 'block_height']);
 
-      return createdBlockHistory[0];
+    return createdBlockHistory[0];
   } catch (err) {
     throw new HttpError(
       status.INTERNAL_SERVER_ERROR,
@@ -66,14 +66,14 @@ async function getAddress(address) {
       address: ADDRESS_TABLE_NAME,
       user: USER_TABLE_NAME
     })
-    .select({
-      id: `${ADDRESS_TABLE_NAME}.id`,
-      public_key: `${ADDRESS_TABLE_NAME}.public_key`,
-      unconfirmed_balance: `${ADDRESS_TABLE_NAME}.unconfirmed_balance`,
-      confirmed_balance: `${ADDRESS_TABLE_NAME}.confirmed_balance`,
-      user_id: `${USER_TABLE_NAME}.id`
-    })
-    .where(`${ADDRESS_TABLE_NAME}.public_key`, address);
+      .select({
+        id: `${ADDRESS_TABLE_NAME}.id`,
+        public_key: `${ADDRESS_TABLE_NAME}.public_key`,
+        unconfirmed_balance: `${ADDRESS_TABLE_NAME}.unconfirmed_balance`,
+        confirmed_balance: `${ADDRESS_TABLE_NAME}.confirmed_balance`,
+        user_id: `${USER_TABLE_NAME}.id`
+      })
+      .where(`${ADDRESS_TABLE_NAME}.public_key`, address);
 
     return userAddress[0];
   } catch (err) {
@@ -89,13 +89,13 @@ async function getAddress(address) {
  * balance on address that recieved the coins.
  * @name createUnconfirmedInboundTransaction
  * @param {string} transactionId hash of the transaction.
+ * @param {string} blockHash hash of the block where transaction resides.
  * @param {Number} amountReceived amount of received coins.
  * @param {BigInteger} transactionTimestamp timestamp of the transaction.
  * @param {object} userAddress Address object that received the coins.
- * @return {object} Address object with properties.
  */
 async function createUnconfirmedInboundTransaction(
-  transactionId, amountReceived, transactionTimestamp, userAddress
+  transactionId, blockHash, amountReceived, transactionTimestamp, userAddress
 ) {
   return knex.transaction(async pgTransaction => {
     try {
@@ -104,6 +104,7 @@ async function createUnconfirmedInboundTransaction(
           type: TRANSACTION_TYPE.INBOUND,
           status: TRANSACTION_STATUS.UNCONFIRMED,
           transaction_id: transactionId,
+          block_id: blockHash,
           amount_received: amountReceived,
           transaction_timestamp: transactionTimestamp,
           public_key: userAddress.public_key,
@@ -119,7 +120,76 @@ async function createUnconfirmedInboundTransaction(
       await pgTransaction.rollback();
       throw new HttpError(
         status.INTERNAL_SERVER_ERROR,
-        `Something went wrong with creating inbound unconfirmed transaction.`
+        'Something went wrong with creating inbound unconfirmed transaction.'
+      );
+    }
+  });
+}
+
+/**
+ * Retrieves `Unconfirmed` and `Accepted` transactions.
+ * @name getUnconfirmedAndAcceptedTransactions
+ * @return {object} List of Transaction objects with properties.
+ */
+async function getUnconfirmedAndAcceptedTransactions() {
+  return await knex.select(
+    'id', 'type', 'status', 'transaction_id', 'block_id',
+    'amount_received', 'transaction_timestamp', 'public_key',
+    'user_id', 'created_at'
+  )
+  .from(TRANSACTION_TABLE_NAME)
+  .where('status', TRANSACTION_STATUS.UNCONFIRMED)
+  .orWhere('status', TRANSACTION_STATUS.ACCEPTED);
+}
+
+/**
+ * Updates transaction to `Confirmed`.
+ * @name updateTransactionStatus
+ * @param {string} transactionId hash of the transaction.
+ * @param {string} publicKey address of the receiving party.
+ */
+async function updateTransactionStatus(transactionId, publicKey) {
+  return await knex(TRANSACTION_TABLE_NAME)
+    .update({
+      status: TRANSACTION_STATUS.CONFIRMED
+    })
+    .where({
+      transaction_id: transactionId,
+      public_key: publicKey
+    });
+}
+
+/**
+ * Updates transaction to `Confirmed` and updates balances accordingly.
+ * @name updateBalancesAndTransactionStatusToConfirmed
+ * @param {string} transactionId hash of the transaction.
+ * @param {string} publicKey address of the receiving party.
+ */
+async function updateBalancesAndTransactionStatusToConfirmed(transactionId, publicKey) {
+  return knex.transaction(async pgTransaction => {
+    try {
+      await pgTransaction(TRANSACTION_TABLE_NAME)
+        .update({
+          status: TRANSACTION_STATUS.CONFIRMED,
+        })
+        .where({
+          transaction_id: transactionId,
+          public_key: publicKey
+        });
+
+      await pgTransaction(ADDRESS_TABLE_NAME)
+        .where('public_key', publicKey)
+        .decrement({
+          unconfirmed_balance: amountReceived
+        })
+        .increment({
+          confirmed_balance: amountReceived
+        });
+    } catch (err) {
+      await pgTransaction.rollback();
+      throw new HttpError(
+        status.INTERNAL_SERVER_ERROR,
+        'Something went wrong with updating transaction.'
       );
     }
   });
@@ -129,5 +199,8 @@ module.exports = {
   getBlockByHash: getBlockByHash,
   createBlockHistory: createBlockHistory,
   getAddress: getAddress,
-  createUnconfirmedInboundTransaction: createUnconfirmedInboundTransaction
+  createUnconfirmedInboundTransaction: createUnconfirmedInboundTransaction,
+  getUnconfirmedAndAcceptedTransactions: getUnconfirmedAndAcceptedTransactions,
+  updateTransactionStatus: updateTransactionStatus,
+  updateBalancesAndTransactionStatusToConfirmed: updateBalancesAndTransactionStatusToConfirmed
 };

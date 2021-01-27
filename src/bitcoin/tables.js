@@ -43,6 +43,7 @@ async function transactionTable(knex) {
       transaction.enu('type', Object.values(TRANSACTION_TYPE)).notNullable();
       transaction.enu('status', Object.values(TRANSACTION_STATUS)).notNullable();
       transaction.string('transaction_id').notNullable();
+      transaction.string('block_id').notNullable();
       transaction.decimal('amount_received', 16, 8).notNullable();
       transaction.integer('transaction_timestamp').notNullable();
       transaction.string('public_key', 35).notNullable();
