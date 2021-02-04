@@ -71,7 +71,7 @@ async function paginateBlockHistory(currentPage) {
     perPage: 20,
     currentPage: currentPage
   });
-  // Return count and entires for retrieved addresses.
+  // Return count and entires for retrieved blocks.
   return {
     count: blockHistoryResult.pagination.total || 0,
     currentPage: blockHistoryResult.pagination.currentPage || null,
@@ -317,7 +317,7 @@ async function paginateAllTransactions(currentPage) {
     perPage: 20,
     currentPage: currentPage
   });
-  // Return count and entires for retrieved addresses.
+  // Return count and entires for retrieved transactions.
   return {
     count: transactionsResult.pagination.total || 0,
     currentPage: transactionsResult.pagination.currentPage || null,
@@ -347,7 +347,7 @@ async function paginateTransactionsByUserId(userId, currentPage) {
     perPage: 20,
     currentPage: currentPage
   });
-  // Return count and entires for retrieved addresses.
+  // Return count and entires for retrieved transactions.
   return {
     count: transactionsResult.pagination.total || 0,
     currentPage: transactionsResult.pagination.currentPage || null,
