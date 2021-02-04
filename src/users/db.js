@@ -59,14 +59,14 @@ async function createUser(payload) {
   const hashedPassword = await bcrypt.hash(payload.password, Number(process.env.PASSWORD_SALT));
   try {
     const createdUser = await knex(USER_TABLE_NAME)
-      .insert({
-        first_name: payload.first_name,
-        last_name: payload.last_name,
-        email: payload.email,
-        password: hashedPassword,
-        role: payload.role || DEFAULT_USER_ROLE
-      })
-      .returning(['id', 'first_name', 'last_name', 'email', 'role']);
+    .insert({
+      first_name: payload.first_name,
+      last_name: payload.last_name,
+      email: payload.email,
+      password: hashedPassword,
+      role: payload.role || DEFAULT_USER_ROLE
+    })
+    .returning(['id', 'first_name', 'last_name', 'email', 'role']);
 
     return createdUser[0];
   } catch (err) {
@@ -93,8 +93,8 @@ async function updateUser(userId, payload) {
   // Update specific user with new data.
   try {
     const updatedUser = await knex(USER_TABLE_NAME)
-      .where({ id: userId })
-      .update(payload, ['id', 'first_name', 'last_name', 'email', 'role']);
+    .where({ id: userId })
+    .update(payload, ['id', 'first_name', 'last_name', 'email', 'role']);
 
     return updatedUser[0];
   } catch (err) {
@@ -136,22 +136,22 @@ async function verifyUserCredentials(payload) {
 async function paginateUsers(currentPage) {
   // Paginate over users table.
   const usersResult = await knex
-    .select(
-      'id', 'first_name', 'last_name', 'email', 'role',
-      'last_login_ip', 'created_at', 'updated_at'
-    )
-    .from(USER_TABLE_NAME)
-    .paginate({
-      perPage: 20,
-      currentPage: currentPage
-    });
+  .select(
+    'id', 'first_name', 'last_name', 'email', 'role',
+    'last_login_ip', 'created_at', 'updated_at'
+  )
+  .from(USER_TABLE_NAME)
+  .paginate({
+    perPage: 20,
+    currentPage: currentPage
+  });
     // Return count and entries for retrieved users list.
     return {
       count: usersResult.pagination.total || 0,
-      currentPage: usersResult.pagination.currentPage,
-      lastPage: usersResult.pagination.lastPage,
+      currentPage: usersResult.pagination.currentPage || null,
+      lastPage: usersResult.pagination.lastPage || null,
       results: usersResult.data
-    }
+    };
 }
 
 module.exports = {

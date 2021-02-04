@@ -1,6 +1,9 @@
 const express = require('express');
 const status = require('http-status');
-const {blocknotifySchema} = require('./schemas');
+const jwt = require('../authorization');
+const { ADMIN_USER_ROLE } = require('../users/consts');
+const { blocknotifySchema } = require('./schemas');
+const pg = require('./db');
 const {
   trackBlocks,
   trackTransactionConfirmations
@@ -43,7 +46,92 @@ router.post('/blocknotify', async (request, reply) => {
   return reply.status(200).send({ message: "Block recieved." });
 });
 
+/* GET route for listing all bitcoin blocks in the system, available for administrator users. */
+router.get('/admin/block-history', async (request, reply) => {
+  // Authorize user using JWT token, and check if that user has `admin` role.
+  try {
+    await jwt.authorize(request.headers['authorization'], ADMIN_USER_ROLE);
+  } catch (err) {
+    return reply.status(err.statusCode).send({ message: err.message });
+  }
 
-// TODO: Continue writing financial routes.
+  // Get current pagination page.
+  const currentPage = Number(request.query.page) || 1;
+  // Paginate blockHistory table.
+  const results = await pg.paginateBlockHistory(currentPage);
+  return reply.status(status.OK).send(results);
+});
+
+/* GET route for listing all addresses in the system, available for administrator users. */
+router.get('/admin/addresses', async (request, reply) => {
+  // Authorize user using JWT token, and check if that user has `admin` role.
+  try {
+    await jwt.authorize(request.headers['authorization'], ADMIN_USER_ROLE);
+  } catch (err) {
+    return reply.status(err.statusCode).send({ message: err.message });
+  }
+
+  // Get current pagination page.
+  const currentPage = Number(request.query.page) || 1;
+  // Paginate address table.
+  const results = await pg.paginateAllAddresses(currentPage);
+  return reply.status(status.OK).send(results);
+});
+
+/* GET route for listing all transactions in the system, available for administrator users. */
+router.get('/admin/transactions', async (request, reply) => {
+  // Authorize user using JWT token, and check if that user has `admin` role.
+  try {
+    await jwt.authorize(request.headers['authorization'], ADMIN_USER_ROLE);
+  } catch (err) {
+    return reply.status(err.statusCode).send({ message: err.message });
+  }
+
+  // Get current pagination page.
+  const currentPage = Number(request.query.page) || 1;
+  // Paginate transaction table.
+  const results = await pg.paginateAllTransactions(currentPage);
+  return reply.status(status.OK).send(results);
+});
+
+/* GET route for listing addresses that belong to the logged in user. */
+router.get('/addresses', async (request, reply) => {
+  // Verify integrity of JWT Token and authorized user.
+  let tokenPayload;
+  try {
+    tokenPayload = await jwt.authorize(request.headers['authorization']);
+  } catch (err) {
+    return reply.status(err.statusCode).send({ message: err.message });
+  }
+
+  // Get current pagination page.
+  const currentPage = Number(request.query.page) || 1;
+  // Paginate address table.
+  const results = await pg.paginateAddressesByUserId(
+    tokenPayload.data.id, currentPage
+  );
+  return reply.status(status.OK).send(results);
+});
+
+/* GET route for listing transactions that belong to the logged in user. */
+router.get('/transactions', async (request, reply) => {
+  // Verify integrity of JWT Token and authorized user.
+  let tokenPayload;
+  try {
+    tokenPayload = await jwt.authorize(request.headers['authorization']);
+  } catch (err) {
+    return reply.status(err.statusCode).send({ message: err.message });
+  }
+
+  // Get current pagination page.
+  const currentPage = Number(request.query.page) || 1;
+  // Paginate transactions table.
+  const results = await pg.paginateTransactionsByUserId(
+    tokenPayload.data.id, currentPage
+  );
+  return reply.status(status.OK).send(results);
+});
+
+// TODO: Route for withdrawing coins.
 
 module.exports = router;

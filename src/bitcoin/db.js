@@ -55,6 +55,32 @@ async function createBlockHistory(blockHash, blockHeight) {
 }
 
 /**
+ * Paginates blockHistory table.
+ * @name paginateBlockHistory
+ * @param {Number} currentPage - Current page set for pagination.
+ * @return {object} Database entries count and block history objects.
+ * @err {object} HttpError
+ */
+async function paginateBlockHistory(currentPage) {
+  // Paginate over blockHistory table.
+  const blockHistoryResult = await knex(BLOCK_HISTORY_TABLE_NAME)
+  .select(
+    'id', 'block_height', 'block_hash', 'created_at'
+  )
+  .paginate({
+    perPage: 20,
+    currentPage: currentPage
+  });
+  // Return count and entires for retrieved addresses.
+  return {
+    count: blockHistoryResult.pagination.total || 0,
+    currentPage: blockHistoryResult.pagination.currentPage || null,
+    lastPage: blockHistoryResult.pagination.lastPage || null,
+    results: blockHistoryResult.data
+  };
+}
+
+/**
  * Retrieves address by provided address base58 string.
  * @name getAddress
  * @param {string} address base58 string of the address.
@@ -82,6 +108,71 @@ async function getAddress(address) {
       'Something went wrong with retrieving address.'
     )
   }
+}
+
+/**
+ * Paginates all address table.
+ * @name paginateAllAddresses
+ * @param {Number} currentPage - Current page set for pagination.
+ * @return {object} Database entries count and address objects.
+ * @err {object} HttpError
+ */
+async function paginateAllAddresses(currentPage) {
+  // Paginate over address table.
+  const addressesResult = await knex({
+    address: ADDRESS_TABLE_NAME,
+    user: USER_TABLE_NAME
+  })
+  .select({
+    id: `${ADDRESS_TABLE_NAME}.id`,
+    public_key: `${ADDRESS_TABLE_NAME}.public_key`,
+    unconfirmed_balance: `${ADDRESS_TABLE_NAME}.unconfirmed_balance`,
+    confirmed_balance: `${ADDRESS_TABLE_NAME}.confirmed_balance`,
+    user_id: `${USER_TABLE_NAME}.id`,
+    user_first_name: `${USER_TABLE_NAME}.first_name`,
+    user_last_name: `${USER_TABLE_NAME}.last_name`,
+    user_email: `${USER_TABLE_NAME}.email`
+  })
+  .paginate({
+    perPage: 20,
+    currentPage: currentPage
+  });
+  // Return count and entires for retrieved addresses.
+  return {
+    count: addressesResult.pagination.total || 0,
+    currentPage: addressesResult.pagination.currentPage || null,
+    lastPage: addressesResult.pagination.lastPage || null,
+    results: addressesResult.data
+  };
+}
+
+/**
+ * Paginates address table by specific user id.
+ * @name paginateAddressesByUserId
+ * @param {Number} userId - id of the user.
+ * @param {Number} currentPage - Current page set for pagination.
+ * @return {object} Database entries count and address objects.
+ * @err {object} HttpError
+ */
+async function paginateAddressesByUserId(userId, currentPage) {
+  // Paginate over address table by `user_id`.
+  const addressesResult = await knex(ADDRESS_TABLE_NAME)
+  .select(
+    'id', 'public_key', 'unconfirmed_balance',
+    'confirmed_balance', 'created_at'
+  )
+  .where('user_id', userId)
+  .paginate({
+    perPage: 20,
+    currentPage: currentPage
+  });
+  // Return count and entires for retrieved addresses.
+  return {
+    count: addressesResult.pagination.total || 0,
+    currentPage: addressesResult.pagination.currentPage || null,
+    lastPage: addressesResult.pagination.lastPage || null,
+    results: addressesResult.data
+  };
 }
 
 /**
@@ -195,12 +286,87 @@ async function updateBalancesAndTransactionStatusToConfirmed(transactionId, publ
   });
 }
 
+/**
+ * Paginates all transactions table.
+ * @name paginateAllTransactions
+ * @param {Number} currentPage - Current page set for pagination.
+ * @return {object} Database entries count and transaction objects.
+ * @err {object} HttpError
+ */
+async function paginateAllTransactions(currentPage) {
+  // Paginate over transaction table.
+  const transactionsResult = await knex({
+    transaction: TRANSACTION_TABLE_NAME,
+    user: USER_TABLE_NAME
+  })
+  .select({
+    id: `${TRANSACTION_TABLE_NAME}.id`,
+    type: `${TRANSACTION_TABLE_NAME}.type`,
+    status: `${TRANSACTION_TABLE_NAME}.status`,
+    transaction_id: `${TRANSACTION_TABLE_NAME}.transaction_id`,
+    block_id: `${TRANSACTION_TABLE_NAME}.block_id`,
+    amount_received: `${TRANSACTION_TABLE_NAME}.amount_received`,
+    transaction_timestamp: `${TRANSACTION_TABLE_NAME}.transaction_timestamp`,
+    public_key: `${TRANSACTION_TABLE_NAME}.public_key`,
+    user_id: `${USER_TABLE_NAME}.id`,
+    user_first_name: `${USER_TABLE_NAME}.first_name`,
+    user_last_name: `${USER_TABLE_NAME}.last_name`,
+    user_email: `${USER_TABLE_NAME}.email`
+  })
+  .paginate({
+    perPage: 20,
+    currentPage: currentPage
+  });
+  // Return count and entires for retrieved addresses.
+  return {
+    count: transactionsResult.pagination.total || 0,
+    currentPage: transactionsResult.pagination.currentPage || null,
+    lastPage: transactionsResult.pagination.lastPage || null,
+    results: transactionsResult.data
+  };
+}
+
+/**
+ * Paginates transaction table by specific user id.
+ * @name paginateTransactionsByUserId
+ * @param {Number} userId - id of the user.
+ * @param {Number} currentPage - Current page set for pagination.
+ * @return {object} Database entries count and transaction objects.
+ * @err {object} HttpError
+ */
+async function paginateTransactionsByUserId(userId, currentPage) {
+  // Paginate over transaction table.
+  const transactionsResult = await knex(TRANSACTION_TABLE_NAME)
+  .select(
+    'id', 'type', 'status', 'transaction_id', 'block_id',
+    'amount_received', 'transaction_timestamp', 'public_key',
+    'created_at'
+  )
+  .where('user_id', userId)
+  .paginate({
+    perPage: 20,
+    currentPage: currentPage
+  });
+  // Return count and entires for retrieved addresses.
+  return {
+    count: transactionsResult.pagination.total || 0,
+    currentPage: transactionsResult.pagination.currentPage || null,
+    lastPage: transactionsResult.pagination.lastPage || null,
+    results: transactionsResult.data
+  };
+}
+
 module.exports = {
   getBlockByHash: getBlockByHash,
   createBlockHistory: createBlockHistory,
+  paginateBlockHistory: paginateBlockHistory,
   getAddress: getAddress,
+  paginateAllAddresses: paginateAllAddresses,
+  paginateAddressesByUserId: paginateAddressesByUserId,
   createUnconfirmedInboundTransaction: createUnconfirmedInboundTransaction,
   getUnconfirmedAndAcceptedTransactions: getUnconfirmedAndAcceptedTransactions,
   updateTransactionStatus: updateTransactionStatus,
-  updateBalancesAndTransactionStatusToConfirmed: updateBalancesAndTransactionStatusToConfirmed
+  updateBalancesAndTransactionStatusToConfirmed: updateBalancesAndTransactionStatusToConfirmed,
+  paginateAllTransactions: paginateAllTransactions,
+  paginateTransactionsByUserId: paginateTransactionsByUserId
 };
