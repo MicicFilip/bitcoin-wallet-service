@@ -111,7 +111,7 @@ async function _processInboundTransactions(blockHash) {
             // Retrieve receving bitcoin address from transaction output.
             const bitcoinAddress = transactionOutputAddresses[0];
             // Check if receving bitcoin address exists in the system.
-            const userAddress = await pg.getAddress(bitcoinAddress);
+            const userAddress = await pg.getAddressByPublicKey(bitcoinAddress);
             if (userAddress) {
               const amountReceived = vectorOutput.value;
               const transactionTimestamp = rawTransaction.time;
@@ -122,7 +122,7 @@ async function _processInboundTransactions(blockHash) {
               );
               logger.log({
                 level: 'info',
-                message: `${userAddress.user_id} received ${amountReceived} amount via ${transactionId} transaction.`
+                message: `Received ${amountReceived} amount via ${transactionId} transaction.`
               });
             }
           }
@@ -156,14 +156,14 @@ async function trackTransactionConfirmations() {
     const transactionId = transaction.transaction_id;
     const blockHash = transaction.block_id;
     // Retrieve raw transacation data from the network.
-    const rawTransaction = rpc.getRawTransaction(transactionId, blockHash);
+    const rawTransaction = await rpc.getRawTransaction(transactionId, blockHash);
 
     if (rawTransaction.confirmations >= NUMBER_OF_CONFIRMATIONS) {
       // If transacation that system detected is `Inbound` we need to update transaction status and
       // increase confirmed balance of that address.
       if (transaction.type === TRANSACTION_TYPE.INBOUND) {
         await pg.updateBalancesAndTransactionStatusToConfirmed(
-          transactionId, transaction.public_key
+          transactionId, transaction.public_key, transaction.amount_received, transaction.user_id
         );
       // If transaction that system detected is `Outbound` we just need to update transaction status
       // to `Confirmed`.

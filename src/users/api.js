@@ -23,10 +23,11 @@ router.post('/register', async (request, reply) => {
     return reply.status(status.BAD_REQUEST).send({ message: err.message });
   }
 
-  // Register user in the system.
+  // Create user and its balances in the system.
   let createdUser;
   try {
     createdUser = await pg.createUser(requestData);
+    await pg.createUserBalance(createdUser.id);
   } catch (err) {
     return reply.status(err.statusCode).send({ message: err.message });
   }

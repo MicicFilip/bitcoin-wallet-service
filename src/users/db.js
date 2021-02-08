@@ -4,6 +4,7 @@ const bcrypt = require('bcrypt');
 const { HttpError } = require('../errors');
 const { USER_TABLE_NAME } = require('./tables');
 const { DEFAULT_USER_ROLE } = require('./consts');
+const { BALANCE_TABLE_NAME } = require('../bitcoin/tables');
 
 
 /**
@@ -74,6 +75,23 @@ async function createUser(payload) {
       status.INTERNAL_SERVER_ERROR, 'Something went wrong with registering user.'
     );
   }
+}
+
+/**
+ * Creates default user balance on user registration.
+ * @name createUserBalance
+ * @param {number} userId - id of the user
+ * @return {object} 'id', 'unconfirmed_balance', 'confirmed_balance', 'user_id', 'created_at'.
+ * @err {object} HttpError
+ */
+async function createUserBalance(userId) {
+  const createdBalance = await knex(BALANCE_TABLE_NAME)
+  .insert({
+    user_id: userId
+  })
+  .returning(['id', 'unconfirmed_balance', 'confirmed_balance', 'user_id', 'created_at']);
+
+  return createdBalance[0];
 }
 
 /**
@@ -156,6 +174,7 @@ async function paginateUsers(currentPage) {
 
 module.exports = {
   createUser: createUser,
+  createUserBalance: createUserBalance,
   updateUser: updateUser,
   verifyUserCredentials: verifyUserCredentials,
   getUserById: getUserById,

@@ -2,13 +2,14 @@ const express = require('express');
 const status = require('http-status');
 const jwt = require('../authorization');
 const { ADMIN_USER_ROLE } = require('../users/consts');
-const { blocknotifySchema } = require('./schemas');
+const { blocknotifySchema, withdrawCoinsSchema } = require('./schemas');
 const pg = require('./db');
 const {
   trackBlocks,
   trackTransactionConfirmations
 } = require('./tracker');
 const { logger } = require('../utils');
+const rpc = require('./rpc');
 
 const router = express.Router();
 
@@ -35,7 +36,7 @@ router.post('/blocknotify', async (request, reply) => {
     await trackTransactionConfirmations();
   } catch (err) {
     logger.log({
-      level: 'critical',
+      level: 'error',
       message: `Error occurred while tracking blocks: ${err.message}`
     });
 
@@ -94,6 +95,21 @@ router.get('/admin/transactions', async (request, reply) => {
   return reply.status(status.OK).send(results);
 });
 
+/* GET route for showing avaliable balances that belong to the logged in user */
+router.get('/balances', async (request, reply) => {
+  // Verify integrity of JWT Token and authorized user.
+  let tokenPayload;
+  try {
+    tokenPayload = await jwt.authorize(request.headers['authorization']);
+  } catch (err) {
+    return reply.status(err.statusCode).send({ message: err.message });
+  }
+
+  // Retrieves balance for provided user.
+  const userBalance = await pg.getBalanceByUserId(tokenPayload.data.id);
+  return reply.status(status.OK).send(userBalance);
+});
+
 /* GET route for listing addresses that belong to the logged in user. */
 router.get('/addresses', async (request, reply) => {
   // Verify integrity of JWT Token and authorized user.
@@ -111,6 +127,29 @@ router.get('/addresses', async (request, reply) => {
     tokenPayload.data.id, currentPage
   );
   return reply.status(status.OK).send(results);
+});
+
+/* POST route for generating new bitcoin address. */
+router.post('/addresses', async (request, reply) => {
+  // Verify integrity of JWT Token and authorized user.
+  let tokenPayload;
+  try {
+    tokenPayload = await jwt.authorize(request.headers['authorization']);
+  } catch (err) {
+    return reply.status(err.statusCode).send({ message: err.message });
+  }
+
+  // Generates new bitcoin address using RPC and binds it to the user
+  // that initiated the request.
+  let createdAddress;
+  try {
+    const newAddress = await rpc.getNewAddress();
+    createdAddress = await pg.createAddress(newAddress, tokenPayload.data.id);
+  } catch (err) {
+    return reply.status(err.statuscode).send({ message: err.message });
+  }
+
+  return reply.status(status.OK).send(createdAddress);
 });
 
 /* GET route for listing transactions that belong to the logged in user. */
@@ -132,6 +171,53 @@ router.get('/transactions', async (request, reply) => {
   return reply.status(status.OK).send(results);
 });
 
-// TODO: Route for withdrawing coins.
+/* POST route for withdrawing coins from the system. */
+router.post('/transactions', async (request, reply) => {
+  // Verify integrity of JWT Token and authorized user.
+  let tokenPayload;
+  try {
+    tokenPayload = await jwt.authorize(request.headers['authorization']);
+  } catch (err) {
+    return reply.status(err.statusCode).send({ message: err.message });
+  }
+
+  const userId = tokenPayload.data.id;
+
+  // Validate bitcoin block hash hex format.
+  let requestData;
+  try {
+    requestData = await withdrawCoinsSchema.validateAsync(request.body);
+  } catch (err) {
+    return reply.status(status.BAD_REQUEST).send({ message: err.message });
+  }
+
+  const receivingAddress = requestData.address;
+  const receivingAmount = requestData.amount;
+
+  // Retrieve users sum of all addresses and check if they have enough coins
+  // to make an outbound transaction.
+  const userBalance = await pg.getBalanceByUserId(userId);
+  if (Number(userBalance.confirmed_balance) < receivingAmount) {
+    return reply.status(status.BAD_REQUEST).send({
+      message: `You can't send ${receivingAmount} amount, your balance is ${userBalance.confirmed_balance}`
+    });
+  }
+
+  // Resolve current timestamp.
+  const currentTimestamp = Math.round(Date.now() / 1000);
+  // Send coins to wanted address and with provided amount.
+  // Create `Unconfirmed` `Outbound` Transaction and decrease confirmed users balance.
+  let transactionId;
+  try {
+    transactionId = await rpc.sendCoinsToAddress(requestData.address, requestData.amount);
+    await pg.createUnconfirmedOutboundTransaction(
+      transactionId, receivingAmount, currentTimestamp, receivingAddress, userId
+    );
+  } catch (err) {
+    return reply.status(err.statusCode).send({ message: err.message });
+  }
+
+  return reply.status(status.OK).send({ message: `Transaction with ${transactionId} id has been sent!` })
+});
 
 module.exports = router;

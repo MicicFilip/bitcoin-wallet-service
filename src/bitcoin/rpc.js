@@ -82,9 +82,45 @@ async function getRawTransaction(transactionId, blockHash) {
   }
 }
 
+/**
+ * Generates new legacy bitcoin address.
+ * @return {string} Bitcoin address.
+ * @err {object} HttpError
+ */
+async function getNewAddress() {
+  try {
+    return await client.command('getnewaddress', '', 'legacy');
+  } catch (err) {
+    throw new HttpError(
+      status.INTERNAL_SERVER_ERROR,
+      `Bitcoin RPC connection failed: ${err.message}`
+    );
+  }
+}
+
+/**
+ * Sends bitcoin coins to provided address. Subtracts fee from sending amount.
+ * @param {string} address - receiving bitcoin address.
+ * @param {Number} amount - amount of coins to send.
+ * @return {string} Bitcoin transaction id.
+ * @err {object} HttpError
+ */
+async function sendCoinsToAddress(address, amount) {
+  try {
+    return await client.command('sendtoaddress', address, amount);
+  } catch (err) {
+    throw new HttpError(
+      status.INTERNAL_SERVER_ERROR,
+      `Bitcoin RPC connection failed: ${err.message}`
+    )
+  }
+}
+
 module.exports = {
   getPreviousBlockHashByHash: getPreviousBlockHashByHash,
   getBlockHeightByBlockHash: getBlockHeightByBlockHash,
   getBlockTransactionsByBlockHash: getBlockTransactionsByBlockHash,
-  getRawTransaction: getRawTransaction
+  getRawTransaction: getRawTransaction,
+  getNewAddress: getNewAddress,
+  sendCoinsToAddress: sendCoinsToAddress
 };

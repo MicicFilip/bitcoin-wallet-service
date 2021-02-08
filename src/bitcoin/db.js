@@ -5,7 +5,8 @@ const { USER_TABLE_NAME } = require('../users/tables');
 const {
   BLOCK_HISTORY_TABLE_NAME,
   ADDRESS_TABLE_NAME,
-  TRANSACTION_TABLE_NAME
+  TRANSACTION_TABLE_NAME,
+  BALANCE_TABLE_NAME
 } = require('./tables');
 const {
   TRANSACTION_TYPE,
@@ -67,6 +68,7 @@ async function paginateBlockHistory(currentPage) {
   .select(
     'id', 'block_height', 'block_hash', 'created_at'
   )
+  .orderBy('created_at', 'desc')
   .paginate({
     perPage: 20,
     currentPage: currentPage
@@ -81,25 +83,43 @@ async function paginateBlockHistory(currentPage) {
 }
 
 /**
+ * Creates new address entry.
+ * @name createAddress
+ * @param {string} address newly created bitcoin address.
+ * @param {Number} userId users internal identifier.
+ * @return {object} Address object with properties.
+ */
+async function createAddress(address, userId) {
+  try {
+    const createdAddress = await knex(ADDRESS_TABLE_NAME)
+      .insert({
+        public_key: address,
+        user_id: userId
+      })
+      .returning([
+        'id', 'public_key', 'created_at'
+      ]);
+
+    return createdAddress[0];
+  } catch (err) {
+    throw new HttpError(
+      status.INTERNAL_SERVER_ERROR,
+      'Something went wrong with inserting new address.'
+    );
+  }
+}
+
+/**
  * Retrieves address by provided address base58 string.
- * @name getAddress
+ * @name getAddressByPublicKey
  * @param {string} address base58 string of the address.
  * @return {object} Address object with properties.
  */
-async function getAddress(address) {
+async function getAddressByPublicKey(address) {
   try {
-    const userAddress = await knex({
-      address: ADDRESS_TABLE_NAME,
-      user: USER_TABLE_NAME
-    })
-      .select({
-        id: `${ADDRESS_TABLE_NAME}.id`,
-        public_key: `${ADDRESS_TABLE_NAME}.public_key`,
-        unconfirmed_balance: `${ADDRESS_TABLE_NAME}.unconfirmed_balance`,
-        confirmed_balance: `${ADDRESS_TABLE_NAME}.confirmed_balance`,
-        user_id: `${USER_TABLE_NAME}.id`
-      })
-      .where(`${ADDRESS_TABLE_NAME}.public_key`, address);
+    const userAddress = await knex(ADDRESS_TABLE_NAME)
+      .select('id', 'public_key', 'user_id', 'created_at')
+      .where('public_key', address);
 
     return userAddress[0];
   } catch (err) {
@@ -126,13 +146,13 @@ async function paginateAllAddresses(currentPage) {
   .select({
     id: `${ADDRESS_TABLE_NAME}.id`,
     public_key: `${ADDRESS_TABLE_NAME}.public_key`,
-    unconfirmed_balance: `${ADDRESS_TABLE_NAME}.unconfirmed_balance`,
-    confirmed_balance: `${ADDRESS_TABLE_NAME}.confirmed_balance`,
     user_id: `${USER_TABLE_NAME}.id`,
     user_first_name: `${USER_TABLE_NAME}.first_name`,
     user_last_name: `${USER_TABLE_NAME}.last_name`,
-    user_email: `${USER_TABLE_NAME}.email`
+    user_email: `${USER_TABLE_NAME}.email`,
+    created_at: `${ADDRESS_TABLE_NAME}.created_at`
   })
+  .orderBy('created_at', 'desc')
   .paginate({
     perPage: 20,
     currentPage: currentPage
@@ -158,10 +178,10 @@ async function paginateAddressesByUserId(userId, currentPage) {
   // Paginate over address table by `user_id`.
   const addressesResult = await knex(ADDRESS_TABLE_NAME)
   .select(
-    'id', 'public_key', 'unconfirmed_balance',
-    'confirmed_balance', 'created_at'
+    'id', 'public_key', 'created_at'
   )
   .where('user_id', userId)
+  .orderBy('created_at', 'desc')
   .paginate({
     perPage: 20,
     currentPage: currentPage
@@ -173,6 +193,24 @@ async function paginateAddressesByUserId(userId, currentPage) {
     lastPage: addressesResult.pagination.lastPage || null,
     results: addressesResult.data
   };
+}
+
+/**
+ * Retrieves balance by specific user id.
+ * @name getBalanceByUserId
+ * @param {Number} userId - id of the user.
+ * @return {object} Balance object with properties.
+ * @err {object} HttpError
+ */
+async function getBalanceByUserId(userId) {
+  const userBalance = await knex(BALANCE_TABLE_NAME)
+  .select(
+    'id', 'unconfirmed_balance', 'confirmed_balance',
+    'created_at'
+  )
+  .where('user_id', userId);
+
+  return userBalance[0]
 }
 
 /**
@@ -202,8 +240,8 @@ async function createUnconfirmedInboundTransaction(
           user_id: userAddress.user_id
         });
 
-      await pgTransaction(ADDRESS_TABLE_NAME)
-        .where('id', userAddress.id)
+      await pgTransaction(BALANCE_TABLE_NAME)
+        .where('user_id', userAddress.user_id)
         .increment({
           unconfirmed_balance: amountReceived
         });
@@ -212,6 +250,49 @@ async function createUnconfirmedInboundTransaction(
       throw new HttpError(
         status.INTERNAL_SERVER_ERROR,
         'Something went wrong with creating inbound unconfirmed transaction.'
+      );
+    }
+  });
+}
+
+/**
+ * Creates unconfirmed outbound transaction and decreases confirmed
+ * balance on address that sends the coins.
+ * @name createUnconfirmedOutboundTransaction
+ * @param {string} transactionId hash of the transaction.
+ * @param {string} blockHash hash of the block where transaction resides.
+ * @param {Number} receivingAmount amount of sent coins.
+ * @param {BigInteger} transactionTimestamp timestamp of the transaction.
+ * @param {string} recevingAddress - address that will receive coins.
+ * @param {Number} userId - user identifier.
+ */
+async function createUnconfirmedOutboundTransaction(
+  transactionId, receivingAmount, transactionTimestamp, recevingAddress,
+  userId
+) {
+  return knex.transaction(async pgTransaction => {
+    try {
+      await pgTransaction(TRANSACTION_TABLE_NAME)
+        .insert({
+          type: TRANSACTION_TYPE.INBOUND,
+          status: TRANSACTION_STATUS.UNCONFIRMED,
+          transaction_id: transactionId,
+          amount_received: receivingAmount,
+          transaction_timestamp: transactionTimestamp,
+          public_key: recevingAddress,
+          user_id: userId
+        });
+
+      await pgTransaction(BALANCE_TABLE_NAME)
+        .where('user_id', userId)
+        .decrement({
+          confirmed_balance: receivingAmount
+        });
+    } catch (err) {
+      await pgTransaction.rollback();
+      throw new HttpError(
+        status.INTERNAL_SERVER_ERROR,
+        'Something went wrong with creating outbound unconfirmed transaction.'
       );
     }
   });
@@ -253,10 +334,14 @@ async function updateTransactionStatus(transactionId, publicKey) {
 /**
  * Updates transaction to `Confirmed` and updates balances accordingly.
  * @name updateBalancesAndTransactionStatusToConfirmed
- * @param {string} transactionId hash of the transaction.
- * @param {string} publicKey address of the receiving party.
+ * @param {string} transactionId - hash of the transaction.
+ * @param {string} publicKey - address of the receiving party.
+ * @param {Number} amountReceived - amount of coins received.
+ * @param {Number} userId - user identifier.
  */
-async function updateBalancesAndTransactionStatusToConfirmed(transactionId, publicKey) {
+async function updateBalancesAndTransactionStatusToConfirmed(
+  transactionId, publicKey, amountReceived, userId
+) {
   return knex.transaction(async pgTransaction => {
     try {
       await pgTransaction(TRANSACTION_TABLE_NAME)
@@ -268,8 +353,8 @@ async function updateBalancesAndTransactionStatusToConfirmed(transactionId, publ
           public_key: publicKey
         });
 
-      await pgTransaction(ADDRESS_TABLE_NAME)
-        .where('public_key', publicKey)
+      await pgTransaction(BALANCE_TABLE_NAME)
+        .where('user_id', userId)
         .decrement({
           unconfirmed_balance: amountReceived
         })
@@ -280,7 +365,7 @@ async function updateBalancesAndTransactionStatusToConfirmed(transactionId, publ
       await pgTransaction.rollback();
       throw new HttpError(
         status.INTERNAL_SERVER_ERROR,
-        'Something went wrong with updating transaction.'
+        'Something went wrong with updating transaction status to confirmed.'
       );
     }
   });
@@ -311,8 +396,10 @@ async function paginateAllTransactions(currentPage) {
     user_id: `${USER_TABLE_NAME}.id`,
     user_first_name: `${USER_TABLE_NAME}.first_name`,
     user_last_name: `${USER_TABLE_NAME}.last_name`,
-    user_email: `${USER_TABLE_NAME}.email`
+    user_email: `${USER_TABLE_NAME}.email`,
+    created_at: `${TRANSACTION_TABLE_NAME}.created_at`
   })
+  .orderBy('created_at', 'desc')
   .paginate({
     perPage: 20,
     currentPage: currentPage
@@ -343,6 +430,7 @@ async function paginateTransactionsByUserId(userId, currentPage) {
     'created_at'
   )
   .where('user_id', userId)
+  .orderBy('created_at', 'desc')
   .paginate({
     perPage: 20,
     currentPage: currentPage
@@ -360,10 +448,13 @@ module.exports = {
   getBlockByHash: getBlockByHash,
   createBlockHistory: createBlockHistory,
   paginateBlockHistory: paginateBlockHistory,
-  getAddress: getAddress,
+  createAddress: createAddress,
+  getAddressByPublicKey: getAddressByPublicKey,
   paginateAllAddresses: paginateAllAddresses,
   paginateAddressesByUserId: paginateAddressesByUserId,
+  getBalanceByUserId: getBalanceByUserId,
   createUnconfirmedInboundTransaction: createUnconfirmedInboundTransaction,
+  createUnconfirmedOutboundTransaction: createUnconfirmedOutboundTransaction,
   getUnconfirmedAndAcceptedTransactions: getUnconfirmedAndAcceptedTransactions,
   updateTransactionStatus: updateTransactionStatus,
   updateBalancesAndTransactionStatusToConfirmed: updateBalancesAndTransactionStatusToConfirmed,
